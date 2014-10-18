@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+  <meta charset="UTF-8">
+
+  <title>Test the functionality equations.js</title>
+
+  <script src="equations.js"></script>
+  <link rel="stylesheet" type="text/css" href="theory.css">
+  <link rel="stylesheet" type="text/css" href="katex.min.css">
+  <script src="katex.min.js" type="text/javascript"></script>
+</head>
+
+<body>
+
+<div class="module">
+<h1>Equation.js</h1>
+<p>Equation.js is a library that allows you to create, simplify, evaluate mathematical equations and convert them to TeX.</p>
+
+<h2>Parsing and simplifying equations</h2>
+We apply parse('...').toTeX() and parse('...').simplify().toTeX() to all examples.
+<table>
+	<thead>
+		<th>Command</th>
+		<th>Result</th>
+		<th>Simplify</th>		
+		<th>Value</th>
+		<th>Pass/Fail</th>
+	</thead>
+
+<script>
+var test = [
+	'6/8', '15/3', 'pi+pi/3','sin(pi/3)', 'tg(pi/3+30º)', '1/0', '-(-sin(35º))', '--sin(35º)', 'ctg(3º)+(-sin(35º))','2^3'];
+
+for (var i = 0; i<test.length; i++)
+{
+document.write('<tr><td>'+test[i]+'</td><td>'+katex.renderToString(parse(test[i]).toTeX())+'</td><td>'+katex.renderToString(parse(test[i]).simplify().toTeX())+'</td><td>'+parse(test[i]).value(['x'],[2])+'</td><td>pass</td></tr>');
+}
+
+
+
+</script>
+	
+
+</table>
+
+
+<h2>Evaluating equations with values</h2>
+<p>We calculate value of equation given that x = 2, y = 3</p>
+
+<table>
+
+<script>
+var 	test = [
+	'x+-x',
+	'0*x^2+-3*x+-1',
+	'2*x^2+-x+0',
+	'2*x^2-x+0',
+	'2*x^2+0-x',
+	'(abs(x+3))',
+	'0*x^2+-3*x+-1-(-(-2*x))',
+	'0-sin(35º-x)',
+	'2*x^4*(1+log(x)^2)-(-x^4)'];
+	
+for (var i = 0; i<test.length; i++)
+{
+document.write('<tr><td>'+test[i]+'</td><td>'+katex.renderToString(parse(test[i]).toTeX())+'</td><td>'+katex.renderToString(parse(test[i]).simplify().toTeX())+'</td><td>'+parse(test[i]).value(['x','y'],[2,3])+'</td><td>pass</td></tr>');
+}
+</script>
+
+</table>
+
+<h2>Converting to JS functions</h2>
+<p>We convert functions using to .toFun() and then call with x = 2, y = 3</p>
+
+<table>
+	<thead>
+		<th>Command</th>
+		<th>Result</th>
+		<th>JS function value</th>		
+		<th>Value</th>
+		<th>Pass/Fail</th>
+	</thead>
+	
+<script>
+var 	test = [
+	'x+-x',
+	'sin(35º-x)',
+	'2*x^4*(1+log(x)^2)-(-x^4)',
+	'sin(x)^2+cos(y)^2-tg(y)'];
+	
+for (var i = 0; i<test.length; i++)
+{
+var a = parse(test[i]).toFun()(2,3),
+	b = parse(test[i]).value(['x','y'],[2,3]),
+	c = parse(test[i]).toJS();
+document.write('<tr><td>'+test[i]+'</td><td>'+katex.renderToString(parse(test[i]).toTeX())+'</td><td>'+b+'</td><td>'+b+'</td><td>'+((a==b)?'pass':'fail')+'</td></tr>');
+}
+</script>
+
+</table>
+
+</div>
+
+</body>
+
+</html>
