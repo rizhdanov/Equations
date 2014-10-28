@@ -181,9 +181,8 @@ Equation.prototype.toString = function(t){
 		case 's': return this.eq1.toString();
 		case 'fun': 
 			var s = this.f;
-			if (t == 'nerd' || t == 'n' || t == 'nerdamer') //возвращаем строку, которую поймент nerdamer
-				s = s.rusnerd();
-			return s +'('+this.eq1.toString(t)+')';
+			if(!this.eq2) return s +'('+this.eq1.toString(t)+')';
+			else return s +'('+this.eq1.toString(t)+','+this.eq2.toString(t)+')';
 		case 'par': return '('+this.eq1.toString(t)+')';
 		case 'neg': return '-'+this.eq1.toString(t);
 		case 'sum': return this.eq1.toString(t) + ' + ' + this.eq2.toString(t);
@@ -209,11 +208,12 @@ var eqFromSym = function(sym) {
 	return eq;
 }
 
-var eqFromFun = function(f,argeq) {
+var eqFromFun = function(f,argeq,argeq2) {
 	var eq = new Equation();
 	eq.type = 'fun';
 	eq.f = f;
 	eq.eq1 = argeq;
+	if (argeq2) eq.eq2 = argeq2;
 	return eq;
 }
 
@@ -561,8 +561,8 @@ Subst.prototype.join = function(b) { //проверка двух Subst объе�
 	n = this.vars.length;
 	for (i = 0; i < n; i++) {
 		j = b.vars.indexOf(this.vars[i]);
-		console.log('i: '+i +'; j: ' +j+'this.vars[i]'+this.vars[i]);
-		console.log('this.eqs[i]: '+this.eqs[i]);
+		//console.log('i: '+i +'; j: ' +j+'this.vars[i]'+this.vars[i]);
+		//console.log('this.eqs[i]: '+this.eqs[i]);
 		if ( j >= 0 && !this.eqs[i].isEqual(b.eqs[j]) ) return null;
 	}
 
@@ -667,10 +667,21 @@ Equation.prototype.value = function(vars,values)
 					case 'cos': return Math.cos(arg);
 					case 'tg': return Math.tan(arg);
 					case 'ctg': return 1/Math.tan(arg);
-					case 'log': return Math.log(arg)/Math.log(10);
+					case 'log': 
+						if (this.eq2) return Math.log(arg)/Math.log(this.eq2.value(vars,values));
+						else return Math.log(arg)/Math.log(10);
 					case 'ln': return Math.log(arg);					
 					case 'exp': return Math.exp(arg);
-					case 'sqrt': return Math.sqrt(arg);					
+					case 'sqrt': 
+						if (this.eq2) 
+						{
+							arg2 = this.eq2.value(vars,values);
+							if (arg2 % 2 == 1 && arg < 0) //correcting Javascript
+								return -Math.pow(-arg, 1/arg2);
+							else
+								return Math.pow(arg, 1/arg2);
+						}
+						else return Math.sqrt(arg);					
 					case 'abs':	return Math.abs(arg);
 					case 'arccos': return Math.acos(arg);
 					case 'arcsin': return Math.asin(arg);
@@ -692,7 +703,7 @@ Equation.prototype.value = function(vars,values)
   }
   
   catch(err) {
-    //console.log(err.message);
+    console.log(err.message);
   	return null;
   }
 }
@@ -731,7 +742,7 @@ Equation.prototype.simplify = function()
 	var i, j,
 	val = this.value();
   if (val != null) {
-	console.log('Has value');
+	//console.log('Has value');
 //Infinity
 	if (val > Math.pow(10,ACC) || val < -Math.pow(10,ACC)) return eqFromSym(new Symbol('inf'));
 
@@ -746,13 +757,19 @@ Equation.prototype.simplify = function()
 			//i = round(i); j = round(j);
 			return parse(i/gcf(i,j) + ' / ' + j/gcf(i,j)); }
 	}
+	for (var ind = 2; ind < 16; ind++)
+		if (isint(val * ind)) 
+			return parse(round(val*ind) + ' / ' + ind); 
+
 //Full squares
-	if (this.type == 'fun' && this.f == 'sqrt'  )
+	if (isint(Math.pow(val,2)))//this.type == 'fun' && this.f == 'sqrt' && !this.eq2 )
 	{
-		i = this.eq1.value();
-		if(isint(i)) {
-			j = fullSquare(i);
-			if (j>1) return parse((j==1?'':j)+'*sqrt('+i/j/j+')'); }
+		i = round(Math.pow(val,2));
+		j = fullSquare(i);
+		if (j>1) 
+			return parse((j==1?'':j)+'*sqrt('+i/j/j+')');
+		else
+			return parse('sqrt('+i+')');
 	}
 //equations with known values
 	for (i = 0; i < known.length; i++)
@@ -770,41 +787,96 @@ Equation.prototype.simplify = function()
 //other floats
 	if (this.type == 's' && this.eq1.type == 'f') return eqFromSym(new Symbol(round(val)));
   }
-  	console.log('Unknown value');
+  
+  	//console.log('Unknown value');
+  
   	if (this.type == 's') return this;
-//1*x
-	if (this.type == 'mul' && this.eq1.type == 's' && this.eq1.eq1.name-0 == 1)
-		return this.eq2.simplify();
+  	i = this.eq1.simplify();
+  	if (this.eq2) j = this.eq2.simplify();
+	else j = null;
+//f((.))
+	if (this.type == 'fun' && i.type == 'par')
+		return eqFromFun(this.f,i.eq1,j).simplify();
+//1*x x*1
+	if (this.type == 'mul' && i.type == 's' && i.eq1.name-0 == 1)
+		return j;
+	if (this.type == 'mul' && j.type == 's' && j.eq1.name-0 == 1)
+		return i;
+//0*x 0/x x*0
+	if ((this.type == 'mul' || this.type == 'div') && (i.type == 's' && i.eq1.name-0 == 0 || j && j.type == 's' && j.eq1.name-0 == 0))
+		return parse('0'); //here we don't check for undefined
 //0-x
-	if (this.type == 'dif' && this.eq1.type == 's' && this.eq1.eq1.name-0 == 0)
-		return new Equation('neg',this.eq2.simplify());
+	if (this.type == 'dif' && i.type == 's' && i.eq1.name-0 == 0)
+		return new Equation('neg',j);
 //x-0
-	if (this.type == 'dif' && this.eq2.type == 's' && this.eq2.eq1.name-0 == 0)
-		return this.eq1.simplify();
+	if (this.type == 'dif' && j.type == 's' && j.eq1.name-0 == 0)
+		return i;
 //0+x
-	if (this.type == 'sum' && this.eq1.type == 's' && this.eq1.eq1.name-0 == 0)
-		return this.eq2.simplify();
+	if (this.type == 'sum' && i.type == 's' && i.eq1.name-0 == 0)
+		return j;
 //x+0
-	if (this.type == 'sum' && this.eq2.type == 's' && this.eq2.eq1.name-0 == 0)
-		return this.eq1.simplify();
+	if (this.type == 'sum' && j.type == 's' && j.eq1.name-0 == 0)
+		return i;
+//c*x/d x/d*c -> c/d *x c*d/x d/x*c -> c*d /x c*(d*x) c*(x*d) (x*d)*c (d*x)*c
+	if (this.type == 'mul' && i.type == 's') {
+		if (j.type == 'div' && j.eq2.type == 's') return i.div(j.eq2).simplify().mult(j.eq1); //c*x/d
+		if (j.type == 'div' && j.eq1.type == 's') return i.mult(j.eq1).simplify().div(j.eq2); //c*d/x
+		if (j.type == 'mul' && j.eq1.type == 's') return i.mult(j.eq1).simplify().mult(j.eq2); //c*(d*x)
+		if (j.type == 'mul' && j.eq2.type == 's') return i.mult(j.eq2).simplify().mult(j.eq1); }//c*(d*x)
+	else if (this.type == 'mul' && j.type == 's') {
+		if (i.type == 'div' && i.eq2.type == 's') return j.div(i.eq2).simplify().mult(i.eq1); //x/d*c
+		if (i.type == 'div' && i.eq1.type == 's') return j.mult(i.eq1).simplify().div(i.eq2); //d/x*c
+		if (i.type == 'mul' && i.eq1.type == 's') return j.mult(i.eq1).simplify().mult(i.eq2); //(d*x)*c
+		if (i.type == 'mul' && i.eq2.type == 's') return j.mult(i.eq2).simplify().mult(i.eq1); }//(x*d)*c
 //--
-	if (this.type == 'dif' && this.eq2.type == 'neg')
-		return new Equation('sum',this.eq1.simplify(),this.eq2.eq1.simplify());
+	if (this.type == 'dif' && j.type == 'neg')
+		return new Equation('sum',i,j.eq1.simplify());
+	if (this.type == 'neg' && i.type == 'neg')
+		return i.eq1.simplify();
+	if (this.type == 'neg' && i.type == 'par' && i.eq1.type == 'neg')
+		return i.eq1.eq1.simplify();
+//*-
+	if (this.type == 'mul' && j.type == 'neg')
+		return i.mult(j.eq1).neg().simplify();
+	if (this.type == 'mul' && i.type == 'neg')
+		return i.eq1.mult(j).neg().simplify();
+// /-
+	if (this.type == 'div' && j.type == 'neg')
+		return i.div(j.eq1).neg().simplify();
+	if (this.type == 'div' && i.type == 'neg')
+		return i.eq1.div(j).neg().simplify();
+//ln 1
+	if (this.type == 'fun' && i.type == 's' && i.name == '1')
+		return parse('0');
+//e^ln(x)*y exp(ln(x)*y)
+	if (this.type == 'pow' && i.type == 's' && i.eq1.name == 'e') 
+		return parse('exp(x)').substitute('x',j).simplify();
+	if (this.type == 'fun' && this.f == 'exp') {
+		if (i.type == 'fun' && i.f == 'ln')
+			return i.eq1.simplify();
+		else if (i.type == 'mul' && i.eq1.type == 'fun' && i.eq1.f == 'ln')
+			return parse('x^y').substitute('x',i.eq1.eq1).substitute('y',i.eq2);
+		else if (i.type == 'mul' && i.eq2.type == 'fun' && i.eq2.f == 'ln')
+			return parse('x^y').substitute('x',i.eq2.eq1).substitute('y',i.eq1); }
 //+-
-	if (this.type == 'sum' && this.eq2.type == 'neg')
-		return new Equation('dif',this.eq1.simplify(),this.eq2.eq1.simplify());
+/*	if (this.type == 'sum' && j.type == 'neg')
+		return new Equation('dif',i,j.eq1.simplify());
+	if (this.type == 'sum' && i.type == 'neg')
+		return new Equation('dif',j.simplify(),i.eq1.simplify());*/
 //*1/x, / (1/x)
-	if (this.type == 'mul' && this.eq2.type == 'div' && this.eq1.name-0 == 1)
-		return new Equation('div',this.eq1.simplify(),this.eq2.eq2.simplify());
-	else if (this.type == 'div' && this.eq2.type == 'div' && this.eq2.eq1.name-0 == 1)
-		return new Equation('mul',this.eq1.simplify(),this.eq2.eq2.simplify());	
+	if (this.type == 'mul' && j.type == 'div' && i.name-0 == 1)
+		return new Equation('div',i.simplify(),j.eq2.simplify());
+	else if (this.type == 'div' && j.type == 'div' && j.eq1.name-0 == 1)
+		return new Equation('mul',i,j.eq2.simplify());
+//redundant parentheses
+	if (this.type == 'par' && (i.type == 's' || i.type == 'neg' || i.type == 'fun'))
+		return i;
+	if (this.type == 'neg' && i.type == 'par')
+		return new Equation('neg',i.eq1.simplify());	
+		
 //recursion	
-	var _;
-	
-	if(this.eq2) _ = this.eq2.simplify();
-	else _ = null;
-	console.log('recursion');
-	return new Equation(this.type,this.eq1.simplify(),_,this.f); //eqFromSym(new Symbol(val));
+	//console.log('recursion');
+	return new Equation(this.type,i,j,this.f); //eqFromSym(new Symbol(val));
 	
 	function round(v,p){
 		if (v == null || v == undefined) return v;
@@ -847,7 +919,7 @@ Equation.prototype.toTeX = function(){
 	var arg,arg2;
 	if(this.type != 's'){
 	arg = this.eq1.toTeX();
-	if (this.type == 'fun' && ['div','mul','s','par'].indexOf(this.eq1.type) < 0) arg = '\\left('+arg+'\\right)';
+	if (this.type == 'fun' && this.f != 'abs' && ['div','mul','s','par'].indexOf(this.eq1.type) < 0) arg = '\\left('+arg+'\\right)';
 	arg2 = this.eq1.type == 'par' ? this.eq1.eq1.toTeX() : arg;}
 	switch (t)
 	{
@@ -878,10 +950,14 @@ Equation.prototype.toTeX = function(){
 					case 'cos': return '\\cos '+arg;
 					case 'tg': return '\\text{tg}'+arg;
 					case 'ctg': return '\\text{ctg}'+arg;
-					case 'log': return '\\log '+arg;
+					case 'log': 
+						if (this.eq2) return '\\log_{'+this.eq2.toTeX()+'}{'+arg+'}';
+						else return '\\log{'+arg+'}';
 					case 'ln': return '\\ln '+arg;					
-					case 'exp': return '\\e^{'+arg2+'}';
-					case 'sqrt': return '\\sqrt{'+arg2+'} ';					
+					case 'exp': return 'e^{'+arg2+'}';
+					case 'sqrt': 
+						if (this.eq2 && this.eq2.value()!=2) return '\\;^{'+this.eq2.toTeX()+'}\\sqrt{'+arg+'}';
+						else return '\\sqrt{'+arg2+'} ';					
 					case 'abs':	return '|'+arg+'|';
 					case 'arccos': return '\\text{arccos}'+arg;
 					case 'arcsin': return '\\text{arcsin}'+arg;
@@ -892,7 +968,10 @@ Equation.prototype.toTeX = function(){
 			}
 		case "par": return '\\left('+arg+'\\right) ';
 		case "neg": return '-'+arg;
-		case "sum": return arg+' + '+ this.eq2.toTeX();
+		case "sum": 
+			arg2 = this.eq2.toTeX();
+			if(arg2[0] == '-') return arg+arg2; //avoiding +- situations
+			else return arg+' + '+ arg2;
 		case 'dif': return arg+' - '+ this.eq2.toTeX();
 		case 'mul': if (this.eq1.type == 's' && ['c','v'].indexOf(this.eq1.eq1.type) >= 0 || this.eq2.type == 's' && ['c','v'].indexOf(this.eq2.eq1.type) >= 0 ) return arg+' '+ this.eq2.toTeX();
 					else return arg+' \\cdot '+ this.eq2.toTeX();
@@ -942,8 +1021,8 @@ Array.prototype.getRandom = function() { //возвращает случайны
 	if (this[0] != 'range') return this[Math.floor(Math.random()*this.length)];
 	else
 	try{
-		if (!this[3]) throw new TypeError("Step is required");
-		return Math.floor(Math.random()*(this[2]-this[1])/this[3])*this[3]+this[1];
+		if (!this[3]) throw new TypeError("getRandom: step is required");
+		return Math.floor(Math.random()*(this[2]-this[1]+this[3])/this[3])*this[3]+this[1];
 	}
 	catch (err)
 	{
@@ -1019,8 +1098,21 @@ function parse(str) {
 	}
 	else if (/^[a-z]+\d*\(.*\)$/.test(str)) { //функция
 		i = /\(/.exec(str).index;
-		eq = new Equation('fun', parse(str.slice(i+1,str.length-1)),undefined ,str.slice(0,i));
-		if(eq && eq.toString()!='') return eq;
+		var argums = str.slice(i+1,str.length-1);
+		var fname = str.slice(0,i);
+		if(/,/.test(argums)) //more than 1 parameter
+			{
+				i = /,/.exec(argums).index;
+				var arg1 = argums.slice(0,i),
+					arg2 = argums.slice(i+1,argums.length);
+				
+				eq = new Equation('fun', parse(arg1),parse(arg2) ,fname);
+				if(eq && eq.toString()!='') return eq;
+			}
+		else {
+			eq = new Equation('fun', parse(argums),undefined ,fname);
+			if(eq && eq.toString()!='') return eq;
+		}
 	}
 	if (/^\(.*\)$/.test(str) && parentheses(str.slice(1,str.length-1))) { //скобки
 		eq = new Equation('par', parse(str.slice(1,str.length-1)));
@@ -1082,67 +1174,133 @@ function parentheses(str) { //возвращает true при равенств�
 }
 
 //!!!!!!!!!!!!!!!!!____________CONVERTER TO JS FUNCTIONS______________________!!!!!!!!!!!!!!!!!!!!!!
-Equation.toJS = function(){
-	var t = this.type;
-	var arg,arg2;
-	if(this.type != 's'){arg = this.eq1.toTeX();
-	arg2 = this.eq1.type == 'par' ? this.eq1.eq1.toTeX() : arg;}
-	switch (t)
-	{
-		case 's':
-		  var ts = this.eq1.type;
-		  if (Symbol.stypes().indexOf(ts) < 0) throw new TypeError("Unknown symbol type: " + ts);
-		  else 
-		  { 
-			arg = this.eq1.name;
-			switch (ts)
-			{
-				case "d": return arg+' ';
-				case "f": return Math.floor(arg*1e5+0.5)/1e5+' ';
-				case "v": if (Equation.greeks.indexOf(arg) >= 0) return '\\'+arg+' ';
-						else return arg+' ';
-				case "inf": return '\\infty ';
-				case "c": return arg == 'pi' ? '\\pi ' : 'e ';
-				case "º": return arg+'^\\circ ';
-				default : throw new TypeError("Failed to render symbol: " + ts);
-			}
-		  }
-		case "fun": 
-			if (Equation.env().indexOf(this.f) < 0) throw new TypeError("Unknown function: " + this.f);
-			else {
-				switch (this.f)
-				{
-					case 'sin': return '\\sin '+arg;
-					case 'cos': return '\\cos '+arg;
-					case 'tg': return '\\text{tg}'+arg;
-					case 'ctg': return '\\text{ctg}'+arg;
-					case 'log': return '\\log '+arg;
-					case 'ln': return '\\ln '+arg;					
-					case 'exp': return '\\e^{'+arg2+'}';
-					case 'sqrt': return '\\sqrt{'+arg2+'} ';					
-					case 'abs':	return '|'+arg+'|';
-					case 'arccos': return '\\text{arcsin}'+arg;
-					case 'arcsin': return '\\text{arccos}'+arg;
-					case 'arctg' : return '\\text{arctg}'+arg;
-					case 'arcctg' : return '\\text{arcctg}'+arg;
-					default : throw new TypeError("Failed to evaluate the function: " + this.f);
-				}
-			}
-		case "par": return '\\left('+arg+'\\right) ';
-		case "neg": return '-'+arg;
-		case "sum": return arg+' + '+ this.eq2.toTeX();
-		case 'dif': return arg+' - '+ this.eq2.toTeX();
-		case 'mul': if (this.eq1.type == 's' && ['c','v'].indexOf(this.eq1.eq1.type) >= 0 || this.eq2.type == 's' && ['c','v'].indexOf(this.eq2.eq1.type) >= 0 ) return arg+' '+ this.eq2.toTeX();
-					else return arg+' \\cdot '+ this.eq2.toTeX();
-		case 'div': return '\\frac{'+arg2+'}{'+ (this.eq2.type == 'par'? this.eq2.eq1.toTeX(): this.eq2.toTeX())+'}';
-		case 'pow': 
-			if (this.eq1.type == 'fun')
-				return this.eq1.f + '^{'+(this.eq2.type == 'par'? this.eq2.eq1.toTeX(): this.eq2.toTeX())+'}\\left('+this.eq1.eq1.toTeX()+'\\right)';
-			else
-				return arg+' ^{'+ (this.eq2.type == 'par'? this.eq2.eq1.toTeX(): this.eq2.toTeX())+'}';
-		default : throw new TypeError("Unexpected equation type: " + this.type);
-	}
+
+Equation.prototype.toFun = function(){
+	var vars = this.listVars().unique();
+	return new Function (vars, 'return ' + this.toJS());
 }
+
+Equation.prototype.toJS = function(){
+	if(this.eq1){
+	switch(this.type)
+	{
+		case 's': 
+			if (this.eq1.type == 'v') return this.eq1.name;
+			else return this.value();
+		case 'fun': 
+			var s = this.f;
+			var arg = this.eq1.toJS();
+			switch(s)
+			{
+				case 'sin': return 'Math.sin('+arg+')';
+				case 'cos': return 'Math.cos('+arg+')';
+				case 'tg': return 'Math.tan('+arg+')';
+				case 'ctg': return '(1/Math.tan('+arg+'))';
+				case 'log': 
+					if(this.eq2) return '(Math.log('+arg+')/Math.log('+this.eq2.toJS()+'))';
+					else return '(Math.log('+arg+')/Math.log(10))';
+				case 'ln': return 'Math.log('+arg+')';					
+				case 'exp': return 'Math.exp('+arg+')';
+				case 'sqrt': 
+					if(this.eq2) return '(('+this.eq2.toJS()+'%2==1 &&'+arg+'<0)?'+'-(Math.pow(-'+arg+',1/('+this.eq2.toJS()+')))' +':(Math.pow('+arg+',1/('+this.eq2.toJS()+'))))';
+					else return 'Math.sqrt('+arg+')';					
+				case 'abs':	return 'Math.abs('+arg+')';
+				case 'arccos': return 'Math.acos('+arg+')';
+				case 'arcsin': return 'Math.asin('+arg+')';
+				case 'arctg' : return 'Math.atan('+arg+')';
+				case 'arcctg' : return '(Math.atan(-'+arg+')+Math.PI/2)';			
+			}
+		case 'par': return '('+this.eq1.toJS()+')';
+		case 'neg': return '-'+this.eq1.toJS();
+		case 'sum': return this.eq1.toJS() + ' + ' + this.eq2.toJS();
+		case 'dif': return this.eq1.toJS() + ' - ' + this.eq2.toJS();
+		case 'mul': return this.eq1.toJS() + ' * ' + this.eq2.toJS();
+		case 'div': return this.eq1.toJS() + ' / ' + this.eq2.toJS();
+		case 'pow': return 'Math.pow('+this.eq1.toJS() + ',' + this.eq2.toJS()+')';
+	}
+	}
+	else return '';
+}
+
+//!!!!!!!!!!!!!!____________FINDING DERIVATIVE____________________________!!!!!!!!!!!!!!!!!!!!!!
+
+
+Equation.prototype.derivative = function(v){
+	//f' for known functions
+	var fs = ['sin', 'cos','tg','ctg','log','ln','exp','sqrt',
+		'abs','arcsin','arccos','arctg','arcctg'];
+	var dfs = ['cos(x)', '-sin(x)','1/(cos(x)^2)','-1/(sin(x)^2)','1/(x*ln(y))','1/x','exp(x)','1/y*pow(x,1/y-1)',
+		'sign(x)','1/sqrt(1-x^2)','-1/sqrt(1-x^2)','1/(1+x^2)','-1/(1+x^2)'];
+	var fs2 = ['log','sqrt'];
+	//(log_y x)'_y= (ln(x) / ln(y))' = -ln(x)/(y*ln(y)^2)
+	//(sqrt[y]x)'= (x^(1/y))' = -ln(x)/y^2*x^(1/y)
+	var dfs2 = ['-ln(x)/(y*ln(y)^2)','-ln(x)/y^2*x^(1/y)']; //derivatives on second argument
+	var arg2; //for functions of 2 variables
+	console.log('call',this.type);
+  try {
+	if(this.eq1){
+	switch(this.type)
+	{
+		case 's': 
+			//console.log('parsing symbol');
+			if (this.eq1.type == 'v' && this.eq1.name == v) return parse('1');
+			else return parse('0');
+		case 'fun': 
+			var i = fs.indexOf(this.f);
+			if (i<0) throw new TypeError("Unknown function for operation derivative: " + this.f);
+			
+			if (this.f == 'log') {
+				if (this.eq2 == undefined) arg2 = parse('10');
+				else arg2 = this.eq2;
+			}
+			else if (this.f == 'sqrt') {
+				if (this.eq2 == undefined) arg2 = parse('2');
+				else arg2 = this.eq2;
+			}
+			
+			if (arg2 == undefined){
+			//f(g(x))'=f'(g(x))*g'(x)
+				return parse(dfs[i]).substitute('x',this.eq1).mult(this.eq1.derivative(v).par()).simplify();
+			}
+			else {
+			//f(g,h)'=f'_1(g,h)*g'+f'_2(g,h)*h'
+				var j = fs2.indexOf(this.f);
+				return parse(dfs[i]).substitute('x',this.eq1).substitute('y',arg2).mult(this.eq1.derivative(v).par()).sum( parse(dfs2[j]).substitute('x',this.eq1).substitute('y',arg2).mult(arg2.derivative(v).par()) ).simplify();
+			}
+		//(f)' = f', (-f)'=-f', (f+g)'=f'+g', (f-g)'=f'-g', (fg)'=f'g+fg'
+		case 'par': return this.eq1.derivative(v);
+		case 'neg': return this.eq1.derivative(v).neg().simplify();
+		case 'sum': return this.eq1.derivative(v).sum(this.eq2.derivative(v)).simplify();
+		case 'dif': return this.eq1.derivative(v).dif(this.eq2.derivative(v)).simplify();
+		case 'mul': 
+			return this.eq1.derivative(v).mult(this.eq2).sum(this.eq1.mult(this.eq2.derivative(v))).simplify();
+			
+		//(f/g)' = (f'g-g'f)/g^2
+		case 'div': return this.eq1.derivative(v).mult(this.eq2).dif(this.eq1.mult(this.eq2.derivative(v))).div(this.eq2.pow(parse('2'))).simplify();
+		
+		//(f^g)'=(e^(ln(f)*g))'=f^g*(g/f+ln(f)*g')
+		case 'pow':
+			if (this.eq1.type == 's' && this.eq1.eq1.name == v) //case: x^f(x)
+				return parse('x^(y-1)*y').substitute('y',this.eq2).sum(this.mult(this.eq2.derivative(v))).simplify();
+			else if (this.eq1.type == 's') //case: c^f(x)
+				return parse('ln(x)*x^y').substitute('x',this.eq1).substitute('y',this.eq2).mult(this.eq2.derivative(v)).simplify();
+			return parse('exp(ln(x)*y)').substitute('x',this.eq1).substitute('y',this.eq2).derivative(v).simplify();
+		default: 
+			throw new TypeError("Unknown node type for operation derivative: " + this.type);
+	}
+	}
+	else return '';
+  }
+  
+  catch(err) {
+    console.log(err.message);
+  	return null;
+  }
+	
+}
+
+
+
 
 //!!!!!!!!!!!!!______________CONSTRUCTORS FOR PROBLEMS________________________!!!!!!!!!!!!!!!!!!!!!
 

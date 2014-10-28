@@ -32,7 +32,7 @@ We apply parse('...').toTeX() and parse('...').simplify().toTeX() to all example
 
 <script>
 var test = [
-	'6/8', '15/3', 'pi+pi/3','sin(pi/3)', 'tg(pi/3+30º)', '1/0', '-(-sin(35º))', '--sin(35º)', 'ctg(3º)+(-sin(35º))','2^3'];
+	'6/8', '15/3', 'pi+pi/3','sin(pi/3)', 'tg(pi/3+30º)', '1/0', '-(-sin(35º))', '--sin(35º)', 'ctg(3º)+(-sin(35º))','2^3','sqrt(98)','(10+6)/(13+1)-1','sqrt(82)/sqrt(2)'];
 
 for (var i = 0; i<test.length; i++)
 {
@@ -59,10 +59,21 @@ var 	test = [
 	'2*x^2+-x+0',
 	'2*x^2-x+0',
 	'2*x^2+0-x',
+	'x^2+-3*x-2.5',
 	'(abs(x+3))',
 	'0*x^2+-3*x+-1-(-(-2*x))',
 	'0-sin(35º-x)',
-	'2*x^4*(1+log(x)^2)-(-x^4)'];
+	'2*x^4*(1+log(x)^2)-(-x^4)',
+	'ln(x)*0',
+	'e^(ln(x)*3)',
+	'exp(ln(x)*3)',
+	'(-sqrt(x))/x',
+	'ln(1)',
+	'log(4)',
+	'log(4,2)',
+	'sqrt(8,2)',
+	'sqrt(8,3)',
+	'sqrt(8,4)'];
 	
 for (var i = 0; i<test.length; i++)
 {
@@ -89,18 +100,59 @@ var 	test = [
 	'x+-x',
 	'sin(35º-x)',
 	'2*x^4*(1+log(x)^2)-(-x^4)',
-	'sin(x)^2+cos(y)^2-tg(y)'];
+	'sin(x)^2+cos(y)^2-tg(y)',
+	'log(16,x)',
+	'sqrt(x,y)'];
 	
 for (var i = 0; i<test.length; i++)
 {
 var a = parse(test[i]).toFun()(2,3),
 	b = parse(test[i]).value(['x','y'],[2,3]),
 	c = parse(test[i]).toJS();
-document.write('<tr><td>'+test[i]+'</td><td>'+katex.renderToString(parse(test[i]).toTeX())+'</td><td>'+b+'</td><td>'+b+'</td><td>'+((a==b)?'pass':'fail')+'</td></tr>');
+document.write('<tr><td>'+test[i]+'</td><td>'+katex.renderToString(parse(test[i]).toTeX())+'</td><td>'+a+'</td><td>'+b+'</td><td>'+((a==b)?'pass':'fail')+'</td></tr>');
 }
 </script>
 
 </table>
+
+<h2>Derivatives</h2>
+<p>We calculate derivative of functions using to .derivative('x') and calculate value at x = 2 and y = 3</p>
+
+<table>
+	<thead>
+		<th>Command</th>
+		<th>TeX</th>
+		<th>Derivative</th>
+		<th>Value</th>
+		<th>Pass/Fail</th>
+	</thead>
+	
+<script>
+var 	test = [
+	'1',
+	'x',
+	'1+x',
+	'2*x',
+	'-2*x',
+	'1/x',
+	'(x-1)*x',
+	'sin(cos(x))',
+	'log(x,3)',
+	'log(x,x)',
+	'exp(3*x)',
+	'x^3',
+	'2^x'];
+	
+for (var i = 0; i<test.length; i++)
+{
+var a = parse(test[i]).derivative('x').toFun()(2,3),
+	b = parse(test[i]).derivative('x').value(['x','y'],[2,3]);
+document.write('<tr><td>'+test[i]+'</td><td>'+katex.renderToString(parse(test[i]).toTeX())+'</td><td>'+katex.renderToString(parse(test[i]).derivative('x').toTeX())+'</td><td>'+b+'</td><td>'+((a==b)?'pass':'fail')+'</td></tr>');
+}
+</script>
+
+</table>
+
 
 </div>
 
